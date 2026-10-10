@@ -1,0 +1,946 @@
+College Event Kit Relay — Complete LLD Project Blueprint
+This is the full project specification you can use as your reference before building the application in Antigravity and pushing it to GitHub.
+The goal is to build a working project, not just diagrams. This specification covers the project structure, user and admin actions, booking rules, authentication, models, services, database, API, UI, error handling, testing, and deployment expectations.
+1. Project overview
+Project name: College Event Kit Relay
+Problem statement: A college owns one event equipment kit shared by multiple clubs. Clubs need to reserve the kit for different time slots. The system must prevent conflicting reservations, enforce a 15-minute inspection gap, track the condition of the equipment, and handle missing or damaged items without silently disrupting future bookings.
+
+
+
+
+One physical kit — KIT-001
+- ITEM-CAM-01 — Camera
+- ITEM-TRI-01 — Tripod
+- ITEM-MIC-01 — Microphone
+
+
+
+Core rules
+- One kit can serve only one club at a time.
+- A 15-minute inspection gap is required after a booking.
+- Every required item must be inspected at checkout and return.
+- Missing or damaged equipment must be tracked as an incident.
+- A confirmed booking can become at risk without being automatically cancelled.
+- Only authorized users can perform protected actions.
+
+2. Project objectives
+The application must:
+1. Allow club representatives to register, log in, and manage their own bookings.
+2. Display available time slots for the physical kit.
+3. Validate booking requests and prevent time conflicts.
+4. Enforce the 15-minute gap between reservations.
+5. Allow authorized organizers to check out and receive returned equipment.
+6. Record the condition of the camera, tripod, and microphone individually.
+7. Report and resolve equipment incidents.
+8. Identify future bookings affected by equipment problems.
+9. Notify affected clubs and administrators.
+10. Maintain an audit trail of important actions.
+11. Protect user information and enforce role-based access.
+12. Provide automated tests for normal and failure scenarios.
+3. Actors and permissions
+Club representative
+A club representative can:
+- Register and log in.
+- View kit details and availability.
+- Create a booking for their own club.
+- View their club's bookings and booking details.
+- Cancel an eligible booking according to the cancellation policy.
+- View booking status and any disruption warnings.
+- View their notifications.
+- View their club's booking history.
+They cannot manage equipment inventory, check out the kit, resolve incidents, manage users, or view other clubs' private bookings.
+Equipment organizer
+An equipment organizer can:
+- Log in to the organizer dashboard.
+- View all bookings and the daily schedule.
+- View the kit's readiness and individual equipment status.
+- Perform checkout and return inspections.
+- Record item conditions, missing items, and damage.
+- Create and update incidents.
+- Record recovered or replacement equipment.
+- Resolve incidents after verifying the outcome.
+- Identify affected bookings and send warnings.
+- Cancel or reschedule bookings when authorized, with a recorded reason.
+- View relevant audit and notification history.
+Administrator
+The administrator has organizer permissions plus administrative permissions, such as:
+- Create, deactivate, or reactivate clubs.
+- Create or deactivate user accounts.
+- Assign roles and link representatives to clubs.
+- Configure permitted booking durations and cancellation policies.
+- View system-wide audit records.
+- Manage application-level settings.
+Do not allow a user to grant themselves administrator privileges.
+System
+The application automatically:
+- Validates booking dates and times.
+- Checks the inspection gap.
+- Prevents simultaneous conflicting bookings.
+- Updates booking and equipment states.
+- Identifies potentially affected future bookings.
+- Creates notification and audit records.
+- Retries failed notification delivery where appropriate.
+The system is the software itself, not a separate human account.
+4. Functional modules
+Each module has one clear responsibility. A module may contain multiple classes, services, repositories, and API endpoints.
+
+College Event Kit Relay
+│
+├── Authentication & Authorization
+├── User Management
+├── Club Management
+├── Kit & Equipment Management
+├── Availability Management
+├── Booking Management
+├── Checkout & Return Management
+├── Inspection Management
+├── Incident & Disruption Management
+├── Notification Management
+├── Audit & History Management
+└── System Monitoring
+
+
+
+4.1 Authentication and authorization
+- Register, login, logout, and identify the logged-in user.
+- Hash passwords securely.
+- Verify roles and permissions on the backend.
+- Restrict access to private bookings and administrative operations.
+- Expire sessions or access tokens securely.
+- Provide password recovery if password-based login is used.
+4.2 User management
+- Create and maintain user profiles.
+- Link club representatives to their clubs.
+- Activate or deactivate accounts.
+- Assign roles through authorized administration.
+- Prevent deactivated users from performing protected actions.
+4.3 Club management
+- Create and update club details.
+- Store contact information.
+- Activate or deactivate clubs.
+- Show booking history for each club.
+- Prevent inactive clubs from creating new bookings.
+4.4 Kit and equipment management
+- Maintain the single kit, KIT-001.
+- Track the camera, tripod, and microphone individually.
+- Record whether an item is available, missing, damaged, or under repair.
+- Calculate whether the kit is complete and ready for handover.
+- Preserve item and incident history.
+4.5 Availability management
+- Display available dates and time slots.
+- Check all relevant existing bookings.
+- Enforce the 15-minute inspection gap.
+- Exclude cancelled bookings from reservation conflicts.
+- Consider active reservations and operational restrictions.
+- Prevent two concurrent requests from successfully reserving overlapping time.
+4.6 Booking management
+- Create bookings.
+- Retrieve booking details.
+- View bookings by club, date, or status.
+- Cancel eligible bookings.
+- Maintain booking lifecycle status.
+- Track at-risk bookings separately from booking status.
+- Send confirmation and cancellation notifications.
+4.7 Checkout, return, and inspection
+- Verify the booking before checkout.
+- Verify the organizer's permission.
+- Record checkout time and item conditions.
+- Block handover if required equipment is missing or unusable.
+- Record return time and inspect all three items.
+- Compare checkout and return results.
+- Trigger incident handling when problems are discovered.
+4.8 Incident and disruption management
+- Report missing or damaged equipment.
+- Associate an incident with an item and, where applicable, a booking.
+- Record the description, reporter, date, and evidence or notes.
+- Identify future bookings potentially affected by an incident.
+- Notify affected clubs and the organizer.
+- Track recovery, replacement, repair, or cancellation.
+- Resolve the incident only after verification.
+4.9 Notification management
+- Send booking confirmations.
+- Send cancellation notifications.
+- Send disruption warnings.
+- Store notification delivery status.
+- Retry failed deliveries.
+- Prevent duplicate notifications where practical.
+4.10 Audit and history
+- Record booking creation and cancellation.
+- Record checkout and return actions.
+- Record item status changes.
+- Record incident creation and resolution.
+- Record who performed each action and when.
+- Restrict audit history to authorized staff.
+4.11 System monitoring
+- Record application errors.
+- Track failed notification attempts.
+- Log important operational failures.
+- Provide a basic health endpoint.
+- Avoid storing passwords, tokens, or unnecessary sensitive data in logs.
+This module is useful, but advanced monitoring can be implemented after the core project works.
+5. Complete booking rules
+These are business rules. They must be enforced by backend services and the database where possible, not only by frontend validation.
+5.1 Time validation
+- Start time must be earlier than end time.
+- Reject bookings in the past.
+- Define the allowed booking duration and opening hours as configurable policies if the college has restrictions.
+- Use consistent timestamp storage, preferably UTC, and display times in the college's local timezone.
+- Reject invalid or ambiguous date/time inputs.
+5.2 Booking conflicts
+A booking conflicts if it overlaps an existing active reservation or violates the required gap after the previous booking.
+Example:
+- Club A books 2:00–3:00 PM.
+- Club B requests 3:10 PM: reject.
+- Club B requests 3:14 PM: reject.
+- Club B requests 3:15 PM: passes the gap rule.
+- Club B requests 3:30 PM: passes the gap rule.
+The final two requests can still be rejected if another booking, operational restriction, or validation rule prevents them.
+Use the same availability logic for every booking request, including requests made by administrators. If an administrator needs to override a rule, define an explicit, permission-controlled override policy and record it in the audit log.
+5.3 Concurrency
+Two users may request the same time slot at nearly the same moment.
+The backend must perform conflict validation and reservation creation as one atomic operation, using a transaction and suitable database locking or concurrency control. A simple “check first, save later” implementation is not enough.
+5.4 Booking lifecycle
+Keep the booking lifecycle explicit:
+- CONFIRMED — reservation exists.
+- CHECKED_OUT — kit has been handed over.
+- COMPLETED — return process is complete.
+- CANCELLED — reservation has been cancelled.
+If the college later requires approval, add a separate PENDING_APPROVAL state. Do not add it unless approval is actually required.
+Track disruption risk separately, such as with risk_reason or an explicit risk field. A confirmed booking may be at risk if equipment becomes unavailable.
+5.5 Checkout and return
+- Only an authorized organizer can perform checkout and return.
+- Checkout must refer to an eligible booking.
+- All required equipment must be inspected.
+- A missing or unusable item blocks handover.
+- Return inspection must record the condition of every item.
+- An incident must be created when equipment is missing or damaged.
+- The kit must not become ready solely because 15 minutes have elapsed.
+- Readiness requires the required inspection and all equipment to be usable.
+5.6 Cancellation and disruptions
+- Club representatives may cancel only eligible bookings belonging to their club.
+- Administrators may cancel bookings only according to their permissions and policy.
+- Record the cancellation reason and actor.
+- Do not automatically cancel all future bookings when an incident occurs.
+- Flag potentially affected bookings and notify the relevant people.
+- After recovery or replacement, verify kit readiness before clearing the disruption.
+6. Authentication and security design
+Use role-based access control (RBAC).
+Authentication: Who is the user?
+Authorization: What is this user allowed to do?
+Recommended security requirements:
+- Store passwords using a modern password-hashing algorithm.
+- Never store passwords in plain text.
+- Use secure sessions or signed, short-lived access tokens.
+- Use HTTPS in deployment.
+- Validate authorization on every protected API request.
+- Check booking ownership using the authenticated user's identity.
+- Do not trust a role, user ID, or club ID supplied by the browser without verification.
+- Restrict user and role management to administrators.
+- Rate-limit login attempts.
+- Keep secrets in environment variables rather than GitHub.
+- Use appropriate cookie security settings if cookie-based authentication is selected.
+- Configure CORS narrowly for the frontend's actual origin.
+- Avoid returning password hashes or private account fields in API responses.
+For the first implementation, choose one authentication approach and implement it consistently. Do not mix session authentication and JWT authentication without a clear reason.
+7. Domain models and class responsibilities
+Models represent the things in the system. Each model should contain the data it owns and, where appropriate, small business methods.
+User
+Represents a person who can sign in.
+- user_id
+- name
+- email
+- password_hash
+- role
+- club_id (optional for staff)
+- is_active
+- created_at
+Responsibilities: represent the account, its assigned role, and its relationship with a club.
+Club
+Represents a college club.
+- club_id
+- name
+- contact_email
+- is_active
+- created_at
+Responsibilities: identify the club and determine whether it can make new bookings.
+Booking
+Represents one reservation of the kit.
+- booking_id
+- club_id
+- kit_id
+- start_time
+- end_time
+- status
+- risk_reason (optional)
+- created_at
+- cancelled_at (optional)
+- cancellation_reason (optional)
+Responsibilities: store reservation details, support permitted lifecycle transitions, and preserve cancellation information.
+EventKit
+Represents the physical equipment kit.
+- kit_id
+- name
+- description
+Responsibilities: identify the kit and provide access to its equipment. Its readiness should be calculated from item conditions, reservations, inspections, and operational restrictions rather than relying on a manually maintained flag alone.
+EquipmentItem
+Represents one item in the kit.
+- item_id
+- kit_id
+- name
+- status
+- condition_notes
+- last_inspected_at
+Responsibilities: track the identity, condition, and operational status of an item.
+The three initial items are the camera, tripod, and microphone. Avoid hard-coding their names into the business logic so additional equipment can be supported later.
+InspectionRecord
+Represents one checkout or return inspection.
+- inspection_id
+- booking_id
+- inspector_id
+- inspection_type
+- inspected_at
+- notes
+Responsibilities: record who performed the inspection, when it happened, and whether it was a checkout or return inspection.
+InspectionItemResult
+Represents the result for one item during an inspection.
+- result_id
+- inspection_id
+- item_id
+- condition
+- notes
+Responsibilities: store the condition of each inspected item separately. An inspection must not be marked complete if required items have not been checked.
+Incident
+Represents an equipment problem or disruption.
+- incident_id
+- item_id
+- related_booking_id (optional)
+- reported_by
+- description
+- status
+- created_at
+- resolution_notes
+- resolved_at (optional)
+Responsibilities: track the problem, recovery or replacement, and verified resolution.
+Notification
+Represents a message intended for a user.
+- notification_id
+- user_id
+- message
+- type
+- delivery_status
+- created_at
+- sent_at (optional)
+- retry_count
+Responsibilities: retain notification history and track delivery attempts.
+AuditLog
+Represents a record of an important action.
+- audit_id
+- actor_id
+- action
+- entity_type
+- entity_id
+- timestamp
+- details
+Responsibilities: provide traceability for important user and admin operations.
+Audit records should not be silently changed or deleted through ordinary application features.
+Enums
+Use explicit enums for roles, booking status, equipment status, inspection type, item condition, incident status, and notification status.
+Examples of equipment status:
+- AVAILABLE
+- MISSING
+- DAMAGED
+- UNDER_REPAIR
+Examples of inspection type:
+- CHECKOUT
+- RETURN
+Keep item condition, item operational status, booking status, and booking risk distinct. They represent different concepts.
+8. Service layer
+Services coordinate business rules, models, repositories, notifications, and audit logging.
+AuthService
+- Register users.
+- Verify login credentials.
+- Manage logout or session invalidation.
+- Apply secure authentication rules.
+AuthorizationService
+- Check user roles.
+- Check booking ownership.
+- Validate permissions before protected operations.
+UserService
+- Retrieve and update profiles.
+- Activate or deactivate accounts.
+- Coordinate permitted user-management actions.
+ClubService
+- Create and update clubs.
+- Activate or deactivate clubs.
+- Retrieve club booking history.
+BookingService
+- Create bookings.
+- Retrieve authorized booking details.
+- Cancel eligible bookings.
+- Apply booking lifecycle rules.
+- Coordinate availability checks and persistence.
+AvailabilityService
+- Find available time slots.
+- Check overlapping reservations.
+- Enforce the 15-minute inspection gap.
+- Consider cancelled reservations, active bookings, and operational restrictions.
+InventoryService
+- Retrieve the kit and its items.
+- Check whether every required item is usable.
+- Determine whether the kit can be handed over.
+- Update equipment status through authorized operations.
+HandoverService
+- Validate a booking before checkout.
+- Record checkout.
+- Validate return.
+- Coordinate inspection records.
+- Block handover if the kit is incomplete or unusable.
+InspectionService
+- Create checkout and return inspection records.
+- Record item-by-item conditions.
+- Validate inspection completeness.
+- Identify discrepancies between checkout and return.
+DisruptionService
+- Create incidents.
+- Track recovery, replacement, and repair.
+- Identify potentially affected future bookings.
+- Coordinate risk flags and resolution.
+- Request appropriate notifications.
+NotificationService
+- Create booking confirmations and warnings.
+- Record delivery attempts.
+- Retry failures.
+- Avoid duplicate messages where practical.
+AuditService
+- Record important actions.
+- Retrieve authorized audit history.
+- Preserve actor, action, timestamp, and relevant entity details.
+SystemHealthService
+- Provide a basic application health check.
+- Track important operational errors.
+- Report failed background notification tasks.
+This last service can be implemented later if the initial application does not require monitoring beyond standard logs.
+9. Repository and database access layer
+Repositories separate data access from business logic.
+- UserRepository — users and account lookup.
+- ClubRepository — clubs and their status.
+- BookingRepository — reservations, date queries, and booking history.
+- KitRepository — kit and equipment retrieval.
+- InspectionRepository — inspection records and item results.
+- IncidentRepository — incidents and resolution history.
+- NotificationRepository — messages and delivery attempts.
+- AuditRepository — audit records.
+Services call repositories rather than writing database queries throughout the application.
+For multi-step operations, use database transactions. For example, saving a return inspection, recording a missing item, opening an incident, and flagging affected bookings must not leave the database in a partially updated state if an operation fails.
+10. Database design
+Use SQLite for the initial development version and PostgreSQL for a production deployment if needed.
+Create these tables:
+- users
+- clubs
+- kits
+- equipment_items
+- bookings
+- inspection_records
+- inspection_item_results
+- incidents
+- notifications
+- notification_attempts (optional but useful)
+- audit_logs
+Important relationships:
+- A club has many bookings.
+- A booking belongs to one club and reserves one kit.
+- A kit contains many equipment items.
+- A booking has checkout and return inspection records.
+- An inspection has multiple item results.
+- An equipment item can have multiple incidents over time.
+- A notification belongs to its recipient.
+- An audit record references its actor and the affected entity where possible.
+Database requirements:
+- Use primary keys and foreign keys.
+- Add indexes for common booking and incident queries.
+- Validate required fields and allowed values.
+- Use transactions for related writes.
+- Protect against concurrent conflicting bookings.
+- Preserve booking, inspection, incident, and audit history.
+- Store timestamps consistently.
+- Avoid deleting records that are needed for traceability.
+A unique constraint on the kit ID and start time alone does not prevent all overlapping bookings. Use a transactional conflict check and appropriate locking or other database concurrency controls.
+11. Technology stack
+Use this initial stack:
+- Language: Python 3.12 or newer.
+- Backend: FastAPI.
+- Database: SQLite for development; PostgreSQL for deployment.
+- ORM: SQLAlchemy.
+- Request validation: Pydantic.
+- Authentication: Secure password hashing with either session-based authentication or signed access tokens.
+- Frontend: React with TypeScript, or HTML/CSS/JavaScript if a simpler UI is preferred.
+- Testing: pytest and FastAPI TestClient.
+- API exploration: FastAPI's generated API documentation and Postman if needed.
+- Version control: Git and GitHub.
+- Configuration: Environment variables and a local .env file that is not committed.
+- Deployment: A suitable Python application host and managed database if the project is published online.
+For a polished portfolio project, React with TypeScript is a good frontend choice. If your priority is to complete the LLD and backend first, start with FastAPI and a minimal frontend.
+12. Frontend pages and navigation
+Public pages
+- Login.
+- Register.
+- Password recovery, if implemented.
+Club representative dashboard
+- Overview of upcoming bookings.
+- Availability calendar.
+- Create booking form.
+- My bookings.
+- Booking details and cancellation.
+- Notifications.
+- Booking history.
+Admin / organizer dashboard
+- Daily schedule and booking overview.
+- Kit readiness overview.
+- Equipment inventory.
+- Checkout form.
+- Return inspection form.
+- Incident list and incident details.
+- Recovery or replacement actions.
+- Affected-booking list.
+- Notification delivery history.
+- Audit history.
+Administrator-only pages
+- User management.
+- Role assignment.
+- Club management.
+- Booking policy settings, if configurable.
+- System health information.
+Every page must call the backend for data and actions. Hiding a button in the frontend is not enough; the backend must enforce the same permissions.
+13. API design
+Organize the API by business responsibility.
+Authentication and users
+- POST /api/auth/register — register a user.
+- POST /api/auth/login — authenticate.
+- POST /api/auth/logout — log out or invalidate the session.
+- GET /api/users/me — retrieve the logged-in user's profile.
+- GET /api/admin/users — list users for authorized administrators.
+- PATCH /api/admin/users/{user_id} — update an account or its status.
+Clubs
+- GET /api/clubs — retrieve permitted club information.
+- POST /api/admin/clubs — create a club.
+- PATCH /api/admin/clubs/{club_id} — update or deactivate a club.
+Kit and availability
+- GET /api/kit — retrieve kit information.
+- GET /api/kit/items — retrieve equipment items and their status.
+- GET /api/availability?date=... — retrieve available slots for a date.
+Bookings
+- POST /api/bookings — create a booking.
+- GET /api/bookings — retrieve bookings visible to the current user.
+- GET /api/bookings/{booking_id} — retrieve an authorized booking.
+- POST /api/bookings/{booking_id}/cancel — cancel an eligible booking.
+- GET /api/clubs/{club_id}/bookings — retrieve a club's bookings, with ownership checks.
+Checkout, return, and inspection
+- POST /api/bookings/{booking_id}/checkout — submit checkout information.
+- POST /api/bookings/{booking_id}/return — submit return information.
+- GET /api/bookings/{booking_id}/inspections — retrieve inspection history.
+Incidents and notifications
+- GET /api/incidents — retrieve incidents visible to the current user.
+- POST /api/incidents — report an incident.
+- POST /api/incidents/{incident_id}/recover — record recovery.
+- POST /api/incidents/{incident_id}/replace — record replacement.
+- POST /api/incidents/{incident_id}/resolve — resolve a verified incident.
+- GET /api/notifications — retrieve the logged-in user's notifications.
+- POST /api/notifications/{notification_id}/read — mark a notification as read.
+Audit and health
+- GET /api/admin/audit-logs — retrieve authorized audit history.
+- GET /api/health — basic application health check.
+These are proposed endpoints. Antigravity should implement them consistently and document the request and response formats. Use HTTP status codes appropriately, such as 401 for unauthenticated requests, 403 for forbidden actions, 404 for unavailable resources, and 409 for booking conflicts.
+14. Main application workflows
+Workflow A — Create a booking
+NotificationServiceDatabaseAvailabilityServiceBookingServiceAuthorizationServiceBooking APINotificationServiceDatabaseAvailabilityServiceBookingServiceAuthorizationServiceBooking API#chatgpt-mermaid-_r_1lg_{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;fill:rgb(237, 237, 237);}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#chatgpt-mermaid-_r_1lg_ .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-_r_1lg_ .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#chatgpt-mermaid-_r_1lg_ .error-icon{fill:rgb(48, 48, 48);}#chatgpt-mermaid-_r_1lg_ .error-text{fill:rgb(237, 237, 237);stroke:rgb(237, 237, 237);}#chatgpt-mermaid-_r_1lg_ .edge-thickness-normal{stroke-width:1px;}#chatgpt-mermaid-_r_1lg_ .edge-thickness-thick{stroke-width:3.5px;}#chatgpt-mermaid-_r_1lg_ .edge-pattern-solid{stroke-dasharray:0;}#chatgpt-mermaid-_r_1lg_ .edge-thickness-invisible{stroke-width:0;fill:none;}#chatgpt-mermaid-_r_1lg_ .edge-pattern-dashed{stroke-dasharray:3;}#chatgpt-mermaid-_r_1lg_ .edge-pattern-dotted{stroke-dasharray:2;}#chatgpt-mermaid-_r_1lg_ .marker{fill:rgb(175, 175, 175);stroke:rgb(175, 175, 175);}#chatgpt-mermaid-_r_1lg_ .marker.cross{stroke:rgb(175, 175, 175);}#chatgpt-mermaid-_r_1lg_ svg{font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";font-size:16px;}#chatgpt-mermaid-_r_1lg_ p{margin:0;}#chatgpt-mermaid-_r_1lg_ .actor{stroke:rgb(31, 78, 148);fill:rgb(9, 23, 44);stroke-width:1;}#chatgpt-mermaid-_r_1lg_ rect.actor.outer-path[data-look="neo"]{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-_r_1lg_ rect.note[data-look="neo"]{stroke:rgb(58, 132, 63);fill:rgb(48, 48, 48);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-_r_1lg_ text.actor>tspan{fill:rgb(237, 237, 237);stroke:none;}#chatgpt-mermaid-_r_1lg_ .actor-line{stroke:rgb(175, 175, 175);}#chatgpt-mermaid-_r_1lg_ .innerArc{stroke-width:1.5;stroke-dasharray:none;}#chatgpt-mermaid-_r_1lg_ .messageLine0{stroke-width:1.5;stroke-dasharray:none;stroke:rgb(175, 175, 175);}#chatgpt-mermaid-_r_1lg_ .messageLine1{stroke-width:1.5;stroke-dasharray:2,2;stroke:rgb(175, 175, 175);}#chatgpt-mermaid-_r_1lg_ [id$="-arrowhead"] path{fill:rgb(175, 175, 175);stroke:rgb(175, 175, 175);}#chatgpt-mermaid-_r_1lg_ .sequenceNumber{fill:#505050;}#chatgpt-mermaid-_r_1lg_ [id$="-sequencenumber"]{fill:rgb(175, 175, 175);}#chatgpt-mermaid-_r_1lg_ [id$="-crosshead"] path{fill:rgb(175, 175, 175);stroke:rgb(175, 175, 175);}#chatgpt-mermaid-_r_1lg_ .messageText{fill:rgb(237, 237, 237);stroke:none;}#chatgpt-mermaid-_r_1lg_ .labelBox{stroke:rgba(255, 255, 255, 0.15);fill:rgb(0, 0, 0);filter:none;}#chatgpt-mermaid-_r_1lg_ .labelText,#chatgpt-mermaid-_r_1lg_ .labelText>tspan{fill:rgb(237, 237, 237);stroke:none;}#chatgpt-mermaid-_r_1lg_ .loopText,#chatgpt-mermaid-_r_1lg_ .loopText>tspan{fill:rgb(237, 237, 237);stroke:none;}#chatgpt-mermaid-_r_1lg_ .sectionTitle,#chatgpt-mermaid-_r_1lg_ .sectionTitle>tspan{fill:rgb(237, 237, 237);stroke:none;}#chatgpt-mermaid-_r_1lg_ .loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:rgba(255, 255, 255, 0.15);fill:rgba(255, 255, 255, 0.15);}#chatgpt-mermaid-_r_1lg_ .note{stroke:rgb(58, 132, 63);fill:rgb(48, 48, 48);}#chatgpt-mermaid-_r_1lg_ .noteText,#chatgpt-mermaid-_r_1lg_ .noteText>tspan{fill:rgb(237, 237, 237);stroke:none;font-weight:normal;}#chatgpt-mermaid-_r_1lg_ .activation0{fill:rgb(48, 48, 48);stroke:hsl(0, 0%, 8.8235294118%);}#chatgpt-mermaid-_r_1lg_ .activation1{fill:rgb(48, 48, 48);stroke:hsl(0, 0%, 8.8235294118%);}#chatgpt-mermaid-_r_1lg_ .activation2{fill:rgb(48, 48, 48);stroke:hsl(0, 0%, 8.8235294118%);}#chatgpt-mermaid-_r_1lg_ .actorPopupMenu{position:absolute;}#chatgpt-mermaid-_r_1lg_ .actorPopupMenuPanel{position:absolute;fill:rgb(9, 23, 44);box-shadow:0px 8px 16px 0px rgba(0,0,0,0.2);filter:drop-shadow(3px 5px 2px rgb(0 0 0 / 0.4));}#chatgpt-mermaid-_r_1lg_ .actor-man circle,#chatgpt-mermaid-_r_1lg_ line{fill:rgb(9, 23, 44);stroke-width:2px;}#chatgpt-mermaid-_r_1lg_ g rect.rect{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));stroke:rgb(31, 78, 148);}#chatgpt-mermaid-_r_1lg_ .node .neo-node{stroke:rgb(31, 78, 148);}#chatgpt-mermaid-_r_1lg_ [data-look="neo"].node rect,#chatgpt-mermaid-_r_1lg_ [data-look="neo"].cluster rect,#chatgpt-mermaid-_r_1lg_ [data-look="neo"].node polygon{stroke:url(#chatgpt-mermaid-_r_1lg_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-_r_1lg_ [data-look="neo"].swimlane.cluster rect{filter:none;}#chatgpt-mermaid-_r_1lg_ [data-look="neo"].node path{stroke:url(#chatgpt-mermaid-_r_1lg_-gradient);stroke-width:1px;}#chatgpt-mermaid-_r_1lg_ [data-look="neo"].node .outer-path{filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-_r_1lg_ [data-look="neo"].node .neo-line path{stroke:rgb(31, 78, 148);filter:none;}#chatgpt-mermaid-_r_1lg_ [data-look="neo"].node circle{stroke:url(#chatgpt-mermaid-_r_1lg_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-_r_1lg_ [data-look="neo"].node circle .state-start{fill:#000000;}#chatgpt-mermaid-_r_1lg_ [data-look="neo"].icon-shape .icon{fill:url(#chatgpt-mermaid-_r_1lg_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-_r_1lg_ [data-look="neo"].icon-shape .icon-neo path{stroke:url(#chatgpt-mermaid-_r_1lg_-gradient);filter:drop-shadow( 1px 2px 2px rgba(185,185,185,1));}#chatgpt-mermaid-_r_1lg_ :root{--mermaid-font-family:-apple-system-body,ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,"Apple Color Emoji",Arial,sans-serif,"Segoe UI Emoji","Segoe UI Symbol";}alt[Booking is valid][Invalid or conflicting]Club RepresentativeSubmit booking requestVerify identity and club accessAuthorizedCreate bookingValidate requested timeCheck relevant reservationsExisting reservationsValid or conflictSave reservation transactionallyBooking committedQueue confirmationBooking createdConfirmationValidation errorExplain rejectionClub Representative
+
+
+
+
+
+Workflow B — Checkout and return
+1. Organizer selects a booking.
+2. System validates the organizer's role and booking state.
+3. Organizer records the condition of the camera, tripod, and microphone.
+4. System validates that all required items have been inspected.
+5. If the kit is complete and usable, checkout is committed and the kit is handed over.
+6. On return, the organizer records the return condition of each item.
+7. The system saves the inspection and compares it with checkout.
+8. If there is missing or damaged equipment, the system creates an incident and blocks unsafe handover.
+9. If all items are usable, the return is completed and readiness is recalculated.
+Workflow C — Equipment incident
+1. Organizer reports a missing or damaged item.
+2. The system records the incident and updates the item's status.
+3. The system finds future bookings that may be affected.
+4. Affected bookings are marked at risk; their booking status is not automatically changed.
+5. Notifications are sent to the organizer and affected clubs.
+6. Organizer records recovery, replacement, or another approved resolution.
+7. The system verifies the item and recalculates kit readiness.
+8. The incident is resolved and the action is recorded in audit history.
+Workflow D — Failed notification
+1. The booking or incident transaction commits successfully.
+2. A notification task is created.
+3. Delivery is attempted.
+4. If delivery fails, the attempt is recorded and retried according to a bounded retry policy.
+5. The original booking or incident is not rolled back because a notification failed.
+6. Repeated processing must not create duplicate notifications unnecessarily.
+For reliability, save the notification task in the database as part of the relevant transaction, then process it separately. For the first version, a simple database-backed retry mechanism is enough; a message broker is not required.
+15. Recommended GitHub project structure
+Use a modular monolith with clear separation between domain logic, services, database access, and API routes.
+
+college-event-kit-relay/
+│
+├── app/
+│   ├── main.py
+│   ├── config.py
+│   ├── database.py
+│   │
+│   ├── models/
+│   │   ├── user.py
+│   │   ├── club.py
+│   │   ├── booking.py
+│   │   ├── event_kit.py
+│   │   ├── equipment_item.py
+│   │   ├── inspection.py
+│   │   ├── incident.py
+│   │   ├── notification.py
+│   │   └── audit_log.py
+│   │
+│   ├── schemas/
+│   │   ├── auth.py
+│   │   ├── user.py
+│   │   ├── club.py
+│   │   ├── booking.py
+│   │   ├── inspection.py
+│   │   └── incident.py
+│   │
+│   ├── services/
+│   │   ├── auth_service.py
+│   │   ├── authorization_service.py
+│   │   ├── user_service.py
+│   │   ├── club_service.py
+│   │   ├── booking_service.py
+│   │   ├── availability_service.py
+│   │   ├── inventory_service.py
+│   │   ├── handover_service.py
+│   │   ├── inspection_service.py
+│   │   ├── disruption_service.py
+│   │   ├── notification_service.py
+│   │   └── audit_service.py
+│   │
+│   ├── repositories/
+│   │   ├── user_repository.py
+│   │   ├── club_repository.py
+│   │   ├── booking_repository.py
+│   │   ├── kit_repository.py
+│   │   ├── inspection_repository.py
+│   │   ├── incident_repository.py
+│   │   ├── notification_repository.py
+│   │   └── audit_repository.py
+│   │
+│   ├── api/
+│   │   ├── auth.py
+│   │   ├── users.py
+│   │   ├── clubs.py
+│   │   ├── kit.py
+│   │   ├── availability.py
+│   │   ├── bookings.py
+│   │   ├── inspections.py
+│   │   ├── incidents.py
+│   │   ├── notifications.py
+│   │   └── admin.py
+│   │
+│   ├── security/
+│   │   ├── password.py
+│   │   ├── authentication.py
+│   │   └── permissions.py
+│   │
+│   └── templates/ or frontend/
+│
+├── tests/
+│   ├── test_authentication.py
+│   ├── test_authorization.py
+│   ├── test_booking.py
+│   ├── test_availability.py
+│   ├── test_concurrent_bookings.py
+│   ├── test_inspections.py
+│   ├── test_incidents.py
+│   └── test_notifications.py
+│
+├── migrations/
+├── .env.example
+├── .gitignore
+├── requirements.txt
+├── README.md
+└── LICENSE
+
+
+
+You do not have to create every file on day one. Start with the required modules and expand as implementation progresses. Keep the frontend/ directory at the repository root instead if you choose a separate React application.
+16. Testing requirements
+Antigravity should create automated tests for these scenarios before considering the project complete.
+Booking tests
+- A valid booking is created.
+- An overlapping booking is rejected.
+- A booking starting 14 minutes after the previous booking is rejected.
+- A booking starting exactly 15 minutes later passes the gap check.
+- A cancelled booking no longer blocks a time slot.
+- An inactive club cannot create a booking.
+- Invalid or past times are rejected.
+- Two simultaneous conflicting requests cannot both succeed.
+Authentication and authorization tests
+- Valid credentials allow login.
+- Invalid credentials are rejected.
+- An unauthenticated user cannot access protected endpoints.
+- A club representative cannot access another club's private booking.
+- A club representative cannot perform checkout or resolve incidents.
+- Only authorized administrators can manage roles.
+Inspection and incident tests
+- Checkout is blocked if a required item is missing.
+- Checkout is blocked if a required item is unusable.
+- An inspection cannot be completed while required item results are missing.
+- Return inspection detects damaged or missing equipment.
+- An incident marks affected future bookings at risk.
+- Recovery or replacement does not automatically mark the entire kit ready if another item remains unusable.
+- A cancelled booking cannot be checked out.
+Notification and audit tests
+- A booking confirmation is recorded after successful booking creation.
+- A failed notification does not undo a committed booking.
+- Retrying a notification does not unnecessarily duplicate it.
+- Important admin and user actions create audit records.
+17. GitHub requirements
+Prepare the repository so another developer can clone it and run the project.
+Include:
+- A README.md with the project description, features, architecture, installation steps, configuration, database setup, test commands, and screenshots.
+- A requirements.txt or equivalent dependency file.
+- A .env.example containing variable names and safe example placeholders, but no real secrets.
+- A .gitignore that excludes .env, virtual environments, caches, local databases if appropriate, logs, and generated files.
+- Database migrations if you use a migration tool such as Alembic.
+- Automated tests.
+- Clear Git commit messages.
+- A license if you intend to distribute the code under one.
+Never push real passwords, API keys, signing secrets, personal information, or production database credentials to GitHub.
+18. Definition of done
+The project is ready for its first release when:
+- Club representatives can register or sign in and create valid bookings.
+- Booking conflicts and the 15-minute gap are enforced by the backend.
+- Concurrent requests cannot create conflicting reservations.
+- Admins can inspect and hand over the kit safely.
+- All three equipment items have individually recorded inspection results.
+- Missing or damaged equipment creates a trackable incident.
+- Affected future bookings are flagged and relevant users are notified.
+- Booking, equipment, and incident states remain consistent.
+- Access control is tested.
+- Database changes and important actions are auditable.
+- Tests pass and the README explains how to run the application from a fresh clone.
+19. Ready-to-use Antigravity prompt
+After reviewing the specification above, copy this prompt into Antigravity. It tells the coding agent to build the project in stages rather than generating a large amount of untested code at once.
+Build a Complete College Event Kit Relay Application
+Act as a senior Python developer and software architect. Build a complete, working College Event Kit Relay application using the LLD specification below. Do not create only a UI mockup or a collection of disconnected classes. Implement the actual backend, database, authentication, business logic, frontend, and automated tests.
+1. Project purpose
+A college has one physical event kit with three items:
+- KIT-001: the event kit
+- ITEM-CAM-01: camera
+- ITEM-TRI-01: tripod
+- ITEM-MIC-01: microphone
+Multiple college clubs can reserve this kit for different time slots. The application must prevent booking conflicts, enforce a 15-minute inspection gap, manage checkout and return inspections, track missing or damaged equipment, notify affected clubs, and maintain audit history.
+2. Technology stack
+Use:
+- Python 3.12+
+- FastAPI
+- SQLAlchemy
+- SQLite for local development
+- Pydantic for validation
+- React with TypeScript for the frontend
+- A suitable secure password-hashing library
+- Session-based or signed-token authentication; select one consistent approach
+- pytest and FastAPI TestClient
+- Alembic for database migrations if appropriate
+Keep the backend as a modular monolith. Do not introduce microservices, Redis, or a message broker unless a genuine requirement justifies them.
+3. User roles
+Implement these roles:
+Club Representative
+- Register and log in.
+- View kit availability.
+- Create bookings for their own club.
+- View their club's bookings and history.
+- Cancel eligible bookings.
+- View notifications and disruption warnings.
+Equipment Organizer
+- View all bookings.
+- Inspect and check out the kit.
+- Record returns and item conditions.
+- Report missing or damaged equipment.
+- Recover or replace items.
+- Resolve incidents.
+- View relevant notifications and audit history.
+Administrator
+- Perform organizer operations.
+- Manage users, roles, and clubs.
+- Configure permitted booking policies.
+- View system-wide audit history.
+Enforce permissions in the backend, not only in the frontend.
+4. Required business rules
+- There is one physical kit, KIT-001.
+- Every booking has a start time and end time.
+- End time must be later than start time.
+- Reject past bookings and inactive-club booking requests.
+- Prevent overlapping reservations.
+- Enforce a 15-minute gap after the previous booking ends.
+- If a booking ends at 3:00 PM, the next booking may start at 3:15 PM, provided all other rules pass.
+- Exclude cancelled bookings from conflict checks.
+- Prevent simultaneous conflicting booking requests using atomic database operations and appropriate concurrency control.
+- Require inspection results for the camera, tripod, and microphone at checkout and return.
+- Block handover if required equipment is missing or unusable.
+- Do not assume the kit is ready just because 15 minutes have passed.
+- Keep booking status separate from equipment status and booking risk.
+- When equipment becomes unavailable, identify potentially affected future bookings, mark them at risk, and notify the appropriate users.
+- Do not automatically cancel all affected bookings.
+- Record cancellation reasons and important administrative actions.
+5. Required models
+Implement appropriate database-backed models for:
+- User
+- Club
+- Booking
+- EventKit
+- EquipmentItem
+- InspectionRecord
+- InspectionItemResult
+- Incident
+- Notification
+- NotificationAttempt, if needed
+- AuditLog
+Create enums for user roles, booking status, equipment status, inspection type, item condition, incident status, and notification delivery status.
+Define clear relationships, foreign keys, constraints, and indexes. Use timestamps consistently.
+6. Required services
+Implement separate services for:
+- AuthService
+- AuthorizationService
+- UserService
+- ClubService
+- BookingService
+- AvailabilityService
+- InventoryService
+- HandoverService
+- InspectionService
+- DisruptionService
+- NotificationService
+- AuditService
+Add a simple health-check service or endpoint.
+Each service must have a clear responsibility. Avoid putting all business logic in API routes or database models.
+7. Repository layer
+Implement repositories for users, clubs, bookings, kits, inspections, incidents, notifications, and audit records.
+Services must use repositories for data access. Use transactions for operations that update multiple related records.
+8. API endpoints
+Provide documented endpoints for:
+- Registration, login, logout, and current-user profile
+- User and club administration
+- Kit and equipment information
+- Availability searches
+- Booking creation, retrieval, and cancellation
+- Checkout and return inspections
+- Incident reporting, recovery, replacement, and resolution
+- Notifications and notification status
+- Administrative audit history
+- Application health
+Use proper HTTP methods, request schemas, response schemas, status codes, and error messages.
+9. Frontend pages
+Build a functional, responsive frontend with separate navigation for club representatives and administrators.
+Club representative pages:
+- Login and registration
+- Dashboard
+- Availability calendar
+- Create booking
+- My bookings
+- Booking details
+- Notifications and history
+Organizer pages:
+- Dashboard
+- Booking schedule
+- Kit inventory
+- Checkout inspection
+- Return inspection
+- Incident management
+- Disruption resolution
+- Notification history
+- Audit history
+Administrator pages:
+- User management
+- Role management
+- Club management
+- Booking policy settings
+- System health
+Include loading states, empty states, form validation, success messages, and useful error messages. All pages must use the real backend APIs.
+10. Reliability and security
+- Hash passwords securely.
+- Keep secrets in environment variables.
+- Include an .env.example without real secrets.
+- Enforce role and ownership checks for every protected operation.
+- Prevent unauthorized role changes.
+- Validate incoming data.
+- Protect booking creation against concurrent conflicts.
+- Use transactions for checkout, return, and incident operations.
+- Ensure notification failures do not undo committed bookings.
+- Retry failed notification delivery with a bounded retry policy.
+- Avoid duplicate notification processing where practical.
+- Preserve audit history.
+- Do not log passwords, access tokens, or secrets.
+11. Required automated tests
+Write tests for:
+- Successful booking
+- Overlapping booking rejection
+- The 14-minute rejection and exact 15-minute boundary
+- Cancelled booking behavior
+- Invalid times and inactive clubs
+- Concurrent booking attempts
+- Authentication and role permissions
+- Cross-club access restrictions
+- Incomplete checkout inspection
+- Missing and damaged items
+- Incident creation and resolution
+- Affected future bookings
+- Recovery and replacement
+- Failed notification delivery
+- Audit record creation
+12. GitHub repository structure
+Keep the project organized into:
+- app/models
+- app/schemas
+- app/services
+- app/repositories
+- app/api
+- app/security
+- tests
+- frontend
+- migrations, if applicable
+Include requirements.txt, README.md, .gitignore, and .env.example.
+The README must explain the architecture, prerequisites, setup, environment variables, database initialization, how to start the backend and frontend, how to run tests, and how to use the application.
+13. Implementation approach
+Build the project in stages:
+1. Inspect the workspace and create a clear implementation plan.
+2. Create the backend foundation, models, database, and migrations.
+3. Implement authentication and authorization.
+4. Implement availability and booking logic.
+5. Implement checkout, return, and inspections.
+6. Implement incidents, disruptions, notifications, and audit history.
+7. Implement and connect the frontend.
+8. Add automated tests and run them.
+9. Fix errors and verify all workflows.
+10. Update the README with accurate setup instructions.
+Before proceeding between stages, summarize what was implemented and run the relevant tests. Do not claim a feature is complete unless it has been implemented and verified.
+If a design decision is unspecified, choose the simplest secure solution that satisfies the requirements and document the choice. Do not invent unnecessary features or add design patterns without a clear purpose.
+14. Acceptance criteria
+The final application must allow a club representative to register, log in, view availability, and create a valid booking. It must enforce booking conflicts and the 15-minute gap, allow organizers to inspect and hand over the kit, detect missing or damaged equipment, flag affected bookings, send notifications, enforce role permissions, maintain audit history, and pass the automated tests.
+Start by inspecting the workspace and presenting the implementation plan. Then implement the project in the stages described above.
+
+
+
+
+20. Recommended workflow
+1. Create a new GitHub repository named college-event-kit-relay.
+2. Open that project folder in Antigravity.
+3. Paste the prompt above.
+4. Review the proposed plan before asking it to implement the first stage.
+5. Run the application and tests locally after each stage.
+6. Push the verified changes to GitHub.
+Important: Have Antigravity build and verify the backend first, then the frontend. This makes debugging easier and helps ensure that the interface uses real business logic instead of mock data.
